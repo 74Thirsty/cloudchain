@@ -34,39 +34,45 @@ All state lives here. Nothing is hidden elsewhere.
 
 ⸻
 
-🔗 Account Naming
+## 🔗 Account Naming
 
 CloudChain enforces a strict naming scheme:
+```
+<basename>001.cloudchain@gmail.com
 
-<base><NNN>.cloudchain@gmail.com
 
 	•	The very first account must end in 001.cloudchain.
 	•	Each new account increments numerically (002, 003, …).
 	•	Base string (mybackup, familydrive, etc.) is locked at first creation.
+```
 
 If quota reaches ≥95%, CloudChain warns you and requires the next sequential account.
 
-⸻
+---
 
-☁️ Remote Storage
+## ☁️ Remote Storage
 
 All files are uploaded to:
-
+```
 Drive:/backup/
+```
 
 This is fixed and cannot be changed. Every account in the chain mirrors the same folder structure.
 
-⸻
+---
 
-🔧 Usage
-	1.	Initialize
+## 🔧 Usage
+
+
+1.	Initialize
+ 
 ```
 cloudchain init
 ```
 
 	•	Prompts for local backup root.
 	•	Enforces base account naming (001.cloudchain).
-``
+
 
 2.	Add a new account
 ```
@@ -76,14 +82,15 @@ cloudchain add
 	•	Checks last account’s quota.
 	•	Requires next sequential Gmail (<base>002.cloudchain@gmail.com).
 
-``
-	3.	Backup files
+
+
+ 3.	Backup files
 ```
 cloudchain backup /path/to/files
 ```
 
-``
-	4.	Reset all state
+
+ 4.	Reset all state
 ```
 cloudchain reset
 ```
@@ -92,14 +99,14 @@ cloudchain reset
 
 ---
 
-⚠️ Warnings
+## ⚠️ Warnings
 	•	Do not deviate from naming scheme. The system will reject mismatches.
 	•	Manual Gmail creation required. You must manually create each <base><NNN>.cloudchain@gmail.com before adding it.
 	•	Drive quota is finite. CloudChain only detects when it’s time to roll over; it cannot expand a single account.
+ 
+ ---
 
-⸻
-
-🛠️ Philosophy
+## 🛠️ Philosophy
 
 CloudChain takes the chaos out of cloud backup by enforcing discipline:
 	•	No ad-hoc accounts
