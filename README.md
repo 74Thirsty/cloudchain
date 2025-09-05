@@ -8,7 +8,8 @@
 
 CloudChain is a command-line backup manager designed to store files into a linked chain of Google accounts.
 Instead of juggling random drives, CloudChain enforces a strict naming convention and quota-based rotation so your backups are always deterministic and infinitely expandable.
-	•	One chain, many accounts: Uses sequential Gmail accounts (<base><NNN>.cloudchain@gmail.com) to extend storage when quotas are hit.
+	
+ 	•	Uses sequential Gmail accounts (<base><NNN>.cloudchain@gmail.com) to extend storage when quotas are hit.
 	•	Self-contained state: All metadata, configs, and tokens are managed inside a single local root folder.
 	•	Deterministic rules: Naming and rotation are enforced by code, so you’ll never wonder which account is “next.”
 
