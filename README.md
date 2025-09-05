@@ -19,7 +19,7 @@ Instead of juggling random drives, CloudChain enforces a strict naming conventio
 On first run, you’ll be asked for your local backup root (LOCAL_ROOT).
 CloudChain will create a state directory:
 
-'''
+```
 <LOCAL_ROOT>/cloud_backup/
 ├── client_secret.json        # OAuth credentials
 ├── accounts.yaml             # Account chain state
@@ -28,7 +28,7 @@ CloudChain will create a state directory:
 │   ├── uploads.yaml
 │   └── mirrored files...
 └── ...
-'''
+```
 
 All state lives here. Nothing is hidden elsewhere.
 
