@@ -1,6 +1,6 @@
 # CloudChain
 
-> Single-Chain Google Drive Backup Manager A deterministic, account-chain approach to managing unlimited Google Drive backups.
+> Single-Chain Google Drive Backup Manager A deterministic, account-chain approach to managing unlimited Google Drive backups. DO NOT USE IN AN ATTEMPT TO ABUSE TOC's.
 
 ---
 
