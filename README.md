@@ -60,32 +60,37 @@ This is fixed and cannot be changed. Every account in the chain mirrors the same
 
 🔧 Usage
 	1.	Initialize
-
+```
 cloudchain init
+```
 
 	•	Prompts for local backup root.
 	•	Enforces base account naming (001.cloudchain).
+``
 
-	2.	Add a new account
-
+2.	Add a new account
+```
 cloudchain add
+```
 
 	•	Checks last account’s quota.
 	•	Requires next sequential Gmail (<base>002.cloudchain@gmail.com).
 
+``
 	3.	Backup files
-
+```
 cloudchain backup /path/to/files
+```
 
-
+``
 	4.	Reset all state
-
+```
 cloudchain reset
-
+```
 	•	Wipes local configs and exits.
 	•	Does not touch remote accounts.
 
-⸻
+---
 
 ⚠️ Warnings
 	•	Do not deviate from naming scheme. The system will reject mismatches.
