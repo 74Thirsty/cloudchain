@@ -64,14 +64,13 @@ GMAIL_DOMAIN = "gmail.com"
 MAX_BYTES = 15 * 1024**3
 CUTOFF_BYTES = int(MAX_BYTES * 0.95)
 
-# UNC Tar Heel color palette
-UNC_GRAY = "#7A8690"       # Wolf Gray
-UNC_NAVY = "#13294B"       # Navy Blue
-UNC_CAROLINA = "#7BAFD4"   # Carolina Blue
+UNC_GRAY = "#7A8690"       
+UNC_NAVY = "#13294B"       
+UNC_CAROLINA = "#7BAFD4"   
 
-# Backup constants
 BACKUP_MAGIC = b"CCBAK\0"
 BACKUP_VERSION = 1
+
 # ---------------- Keyring & Path helpers ---------------- #
 
 def kr_get(key: str) -> str | None:
@@ -202,20 +201,17 @@ def _account_local_dir(account_local: str) -> Path:
     return account_dir_local(account_local)
 
 def _has_local_mirror(rec: Dict, account_local: str) -> bool:
-    # Check current path in record
     lp = rec.get("local_path")
     if lp and Path(lp).exists():
         rec["local_mirrored"] = True
         return True
 
-    # If path is missing, check for same-name file in account dir
     candidate = account_dir_local(account_local) / rec.get("name", "")
     if candidate.exists():
         rec["local_mirrored"] = True
         rec["local_path"] = str(candidate)
         return True
 
-    # Nothing found locally → clear flags
     rec["local_mirrored"] = False
     rec["local_path"] = ""
     return False
@@ -329,7 +325,6 @@ def _download_by_id(service, file_id: str, dest_path: Path):
 
     return {"id": file_id, "name": name, "path": str(dest_path)}
 
-# ---------------- Commands ---------------- #
 # ---------------- Google Drive helpers ---------------- #
 
 def build_service(account_local: str):
@@ -537,11 +532,11 @@ def list_cloud_contents():
 
     for rec in ledger:
         mirrored = _has_local_mirror(rec, account)
-        if mirrored and rec.get("id"):      # both
+        if mirrored and rec.get("id"):  
             row_style = UNC_CAROLINA
-        elif mirrored and not rec.get("id"): # local only
+        elif mirrored and not rec.get("id"):
             row_style = UNC_GRAY
-        elif (not mirrored) and rec.get("id"): # cloud only
+        elif (not mirrored) and rec.get("id"):
             row_style = UNC_NAVY
         else:
             row_style = UNC_GRAY
@@ -801,7 +796,6 @@ def sync_cloud_to_local():
     service = build_service(account)
     backup_id = get_backup_folder(service)
 
-    # Get list of files from Drive:/backup
     resp = service.files().list(
         q=f"'{backup_id}' in parents and trashed=false",
         fields="files(id,name,size,mimeType,modifiedTime)"
@@ -931,7 +925,6 @@ def backup_app_state():
     ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     backup_file = root / f"cloudchain_state_{ts}.ccbak"
 
-    # gather files
     files_to_backup = [reg_path()]
     for acct in reg.get("accounts", []):
         if token_path(acct).exists():
@@ -939,7 +932,6 @@ def backup_app_state():
         if ledger_path(acct).exists():
             files_to_backup.append(ledger_path(acct))
 
-    # include keyring entries
     kr_dump = {}
     for key in ["base_backup", "chain_base", "client_id", "client_secret"]:
         val = kr_get(key)
@@ -950,7 +942,6 @@ def backup_app_state():
         yaml.safe_dump(kr_dump, f)
     files_to_backup.append(kr_path)
 
-    # create tarball
     tar_bytes = io.BytesIO()
     with tarfile.open(fileobj=tar_bytes, mode="w") as tar:
         for f in files_to_backup:
@@ -959,7 +950,6 @@ def backup_app_state():
 
     data = tar_bytes.getvalue()
 
-    # encrypt
     salt = secrets.token_bytes(16)
     nonce = secrets.token_bytes(12)
     key = _derive_key(password, salt)
@@ -1032,12 +1022,10 @@ def restore_app_state():
         console.print("[red]Decryption failed (wrong passphrase or corrupt file)[/]")
         return
 
-    # extract tar
     tar_bytes = io.BytesIO(data)
     with tarfile.open(fileobj=tar_bytes, mode="r") as tar:
         tar.extractall(get_base_root())
 
-    # restore keyring
     kr_path = get_base_root() / "keyring_dump.yaml"
     if kr_path.exists():
         with kr_path.open() as f:
@@ -1195,7 +1183,6 @@ if __name__ == "__main__":
             restore_app_state()
             reg = load_registry()
             if not reg.get("accounts"):
-                # still empty after restore
                 sanity_and_init_if_needed()
         else:
             sanity_and_init_if_needed()
