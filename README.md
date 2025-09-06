@@ -219,5 +219,5 @@ Copyright © 2025 Christopher Hirschauer. All rights reserved.
 
 **QR (scan with any wallet):**
 [img]https://i.postimg.cc/FfHsYB21/IMG-1693.jpg[/img]
-
 [img]https://i.postimg.cc/bZTwNhVK/IMG-1694.jpg[/img]
+(https://i.postimg.cc/254qKpGd/IMG-1693.jpg https://i.postimg.cc/nL8j2V4c/IMG-1694.jpg)
