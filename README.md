@@ -3,7 +3,7 @@
 # CloudChain
 
 > **Single-Chain Google Drive Backup Manager**
-> A deterministic, account-chain approach to managing unlimited Google Drive backups.
+> Deterministic, account-chain backups — portable, auditable, and infinitely expandable.
 > **⚠️ DO NOT USE in any attempt to bypass Google’s Terms of Service.**
 
 ---
@@ -16,63 +16,95 @@
 
 ## 🚀 Overview
 
-CloudChain is a command-line backup manager that chains together multiple Google Drive accounts into one seamless backup system. Instead of random juggling, CloudChain enforces a **strict naming convention** and **quota-based rotation** so your backups are deterministic, auditable, and infinitely expandable.
+CloudChain is a command-line backup manager that chains together multiple Google Drive accounts into one seamless system. It enforces a **strict naming convention** and **quota-based rollover** so your backups are structured, predictable, and never hit a dead end.
 
-* Uses sequential Gmail accounts (`<base><NNN>.cloudchain@gmail.com`) to extend storage.
-* Self-contained: all metadata, configs, and tokens live inside a single **local root**.
-* Deterministic rules: account naming and quota rollover are enforced by code.
+* Sequential Gmail accounts (`<base><NNN>.cloudchain@gmail.com`) extend storage deterministically.
+* Everything lives in a **single local root** (`cloud_backup/`).
+* Encrypted app-state backups (`.ccbak`) let you move between machines with zero logins.
+* Color-coded TUI: instantly see which files are cloud-only, local-only, or mirrored both.
 
 ---
 
 ## 📂 Local Directory Structure
 
-When you first run CloudChain, it prompts for your local backup root (`LOCAL_ROOT`).
-It then creates:
-
 ```
 <LOCAL_ROOT>/cloud_backup/
-├── client_secret.json        # OAuth credentials
 ├── accounts.yaml             # Account chain state
 ├── <base>001.cloudchain/     # Per-account directory
 │   ├── token.json
-│   ├── uploads.yaml
+│   ├── uploads.yaml          # Cloud ledger (self-healing local flags)
 │   └── mirrored files...
 └── ...
 ```
-
-Everything lives here. Nothing is scattered elsewhere.
 
 ---
 
 ## 🔗 Account Naming
 
-CloudChain locks you into a single, predictable naming scheme:
+CloudChain enforces predictable Gmail usernames:
 
 ```
 <basename>001.cloudchain@gmail.com
 ```
 
-* The **first account must end in `001.cloudchain`**.
+* First account must end with `001.cloudchain`.
 * Each new account increments numerically (`002`, `003`, …).
-* The base string (e.g., `mybackup`, `familydrive`) is locked at initialization.
-
-If quota hits **≥95% OR ≥14.25 GB**, CloudChain warns you and requires the **next sequential account**.
+* Base string (`mybackup`, `familydrive`) is locked at initialization.
+* At **≥95% quota or ≥14.25 GB**, CloudChain requires the next sequential account.
 
 ---
 
 ## ☁️ Remote Storage
 
-Every account in the chain mirrors the same path:
+Every account uses the fixed path:
 
 ```
 Drive:/backup/
 ```
 
-This location is fixed and cannot be changed.
+No custom folders. No scattered files. Just one clean namespace.
 
 ---
 
-## 🔧 Usage
+## 🔧 Features
+
+### Application State Portability
+
+* **Export**: Saves accounts, tokens, ledgers, and config into an encrypted `.ccbak` file.
+* **Restore**: Decrypts and rebuilds state on a new machine.
+* Encryption: **AES-256-GCM + scrypt KDF**.
+* On first run, CloudChain asks if you want to restore or start fresh.
+
+### Backup & Sync
+
+* **Upload**: Send any file to Drive:/backup/. Optionally mirror locally.
+* **Download**: Pull cloud files back into the local mirror.
+* **Sync (Local→Cloud)**: Push everything in local backup folder to Drive.
+* **Sync (Cloud→Local)**: Ensure local mirror has all Drive files.
+
+### Delete
+
+* **Delete Local**: Remove mirrored copies while keeping them in Drive.
+* **Delete Cloud**: Remove files from Drive and clean the ledger.
+
+### Ledger
+
+* **Self-healing local flags**: Cloud ledger auto-updates to reflect local reality.
+* **Color-coded rows** (UNC theme):
+
+  * Wolf Gray → Cloud only
+  * Navy Blue → Local only
+  * Carolina Blue → Both present
+
+### Menus
+
+* Sub-menus: **Accounts**, **Cloud**, **Local**, **System**.
+* Stable screens — waits for confirmation so messages don’t vanish.
+* Styled UI in Tar Heel colors across panels, menus, and ledgers.
+
+---
+
+## 🛠️ Usage
 
 **1. Initialize**
 
@@ -80,133 +112,97 @@ This location is fixed and cannot be changed.
 cloudchain init
 ```
 
-* Prompts for local backup root.
-* Enforces `<base>001.cloudchain` account.
-
-**2. Add a new account**
+**2. Upload a file**
 
 ```bash
-cloudchain add
+cloudchain upload ~/Documents/file.txt
 ```
 
-* Checks quota of last account.
-* Requires exact next Gmail (e.g., `<base>002.cloudchain@gmail.com`).
-
-**3. Backup files**
+**3. Download or sync**
 
 ```bash
-cloudchain backup /path/to/files
+cloudchain download
+cloudchain sync --local-to-cloud
+cloudchain sync --cloud-to-local
 ```
 
-**4. Reset all state**
+**4. Export state**
+
+```bash
+cloudchain export
+# Produces cloudchain_state_20250906T123000Z.ccbak
+```
+
+**5. Restore state**
+
+```bash
+cloudchain restore /path/to/cloud_backup/
+```
+
+**6. Reset**
 
 ```bash
 cloudchain reset
 ```
 
-* Wipes local configs/state and exits.
-* Does **not** touch remote Drive data.
-
 ---
 
-## ⚠️ Warnings
-
-* Do not deviate from the naming scheme. Mismatches are rejected.
-* You must manually create each Gmail account before linking it.
-* Drive quota is finite: CloudChain only detects rollover, it cannot expand a single account.
-
----
-
-## 🛠️ Philosophy
-
-CloudChain eliminates cloud chaos by enforcing discipline:
-
-* No ad-hoc accounts
-* No mystery folders
-* No hidden state
-
-Just a clean, deterministic chain of accounts you can **audit at a glance**.
-
----
-
-## 📖 Quick Example Session
-
-Here’s what using CloudChain looks like in practice:
+## 📖 Example Session
 
 ```bash
-# Step 1: Initialize
+# Initialize chain
 cloudchain init
-> Enter LOCAL_ROOT: /home/you/Backups
+> Enter LOCAL_ROOT: ~/Backups
 > Confirm first account: mybackup001.cloudchain@gmail.com
 
-# Step 2: Backup files
-cloudchain backup ~/Documents/Taxes
-> Uploading… 1.2 GB complete
-> Account quota: 12.8 GB / 15 GB
+# Upload a file
+cloudchain upload ~/Music/song.mp3
+> Uploaded … mirrored locally at ~/Backups/cloud_backup/mybackup001.cloudchain/song.mp3
 
-# Step 3: Quota warning (≥95% OR ≥14.25 GB)
-cloudchain backup ~/Photos
-> Quota reached on mybackup001.cloudchain@gmail.com
-> Please create next account: mybackup002.cloudchain@gmail.com
+# View ledger (colors applied)
+Name           Size     Uploaded From     When                       Local Mirror
+─────────────  ───────  ────────────────  ─────────────────────────  ───────────
+song.mp3       4 MB     ~/Music/song.mp3  2025-09-06T12:34:56Z       Yes (blue)
 
-# Step 4: Add the new account
-cloudchain add
-> Confirm next account: mybackup002.cloudchain@gmail.com
-> Linked successfully.
-
-# Step 5: Continue backup
-cloudchain backup ~/Photos
-> Uploading to mybackup002.cloudchain@gmail.com
-> Complete.
+# Export app state
+cloudchain export
+> Application state exported: ~/Backups/cloud_backup/cloudchain_state_20250906T123456Z.ccbak
 ```
 
-At the end, you’ve got a **chain of accounts** (`mybackup001`, `mybackup002`, …) all stitched together, each continuing where the last left off.
+---
+
+## 💻 Windows Notes
+
+* Python 3.9+ required.
+* Keyring integrates with Windows Credential Manager.
+* OAuth flow opens in your browser.
+* Paths look like:
+
+  ```
+  C:\Users\You\CloudChainBackups\cloud_backup
+  ```
 
 ---
 
-## 💻 Windows Ready
+## 🛡️ Philosophy
 
-Yes — CloudChain works on Windows as well as Linux/macOS. A few notes:
+CloudChain is opinionated. It trades “freedom” for **discipline**:
 
-* **Python Support**
-  Install Python 3.9+ on Windows (from [python.org](https://www.python.org/downloads/)) and use `pip install -r requirements.txt` to set up dependencies.
-
-* **Local Storage Path**
-  On Windows, your `LOCAL_ROOT` might look like:
-
-  ```
-  C:\Users\YourName\CloudChainBackups
-  ```
-
-  CloudChain will still create its `cloud_backup/` subfolder there.
-
-* **Keyring Backend**
-  CloudChain uses the `keyring` library. On Windows, this integrates with **Windows Credential Manager**, so tokens are stored securely without extra setup.
-
-* **OAuth Browser Flow**
-  When authorizing Google Drive access, your default browser will pop open just like on Linux.
-
-* **PowerShell / Command Prompt**
-  Use commands like this:
-
-  ```powershell
-  cloudchain init
-  cloudchain backup C:\Users\YourName\Documents
-  ```
-
-## License
-
-This project is licensed under the [CloudChain License](LICENSE.md).  
-Copyright © 2025 Christopher Hirschauer. All rights reserved.
+* No ad-hoc accounts.
+* No mystery folders.
+* No hidden state.
+  Just a deterministic, portable backup chain you can **audit at a glance**.
 
 ---
 
+## 📜 License
+
+This project is licensed under the [CloudChain License](LICENSE.md).
+© 2025 Christopher Hirschauer. All rights reserved.
+
 ---
 
-## ☕ Buy Me a Coffee (Crypto)
+## ☕ Support Development
 
-**Safe Address:** `eth:0xC6139506fa54c450948D9D2d8cCf269453A54f17`
-
-## ☕ One-Tap on Mobile
-
-[Donate via PayPal](https://www.paypal.me/obeymythirst)
+* **ETH:** `0xC6139506fa54c450948D9D2d8cCf269453A54f17`
+* **PayPal:** [paypal.me/obeymythirst](https://www.paypal.me/obeymythirst)
