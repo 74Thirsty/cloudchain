@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 CloudChain for Google Drive — Single-Chain Backup Manager
 
@@ -34,7 +33,7 @@ import keyring
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt, Confirm
-from rich.progress import Progress, BarColumn, TimeRemainingColumn, TextColumn
+from rich.progress import Progress, BarColumn, TextColumn
 from rich.panel import Panel
 
 from googleapiclient.discovery import build
@@ -171,6 +170,7 @@ def sanity_and_init_if_needed() -> None:
     console.print(f"[green]Setup complete.[/] First account: {email}")
 
 
+
 # ---------------- Google Drive helpers ---------------- #
 
 def build_service(account_local: str):
@@ -202,7 +202,6 @@ def build_service(account_local: str):
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            # Enforce account chooser
             flow = InstalledAppFlow.from_client_config(config, SCOPES)
             auth_url, _ = flow.authorization_url(
                 access_type="offline",
@@ -223,7 +222,6 @@ def build_service(account_local: str):
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 def get_backup_folder(service) -> str:
-    # "root" is a stable alias for the user's Drive root in v3
     resp = service.files().list(
         q="name='backup' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
         fields="files(id,name)"
@@ -236,7 +234,6 @@ def get_backup_folder(service) -> str:
     return folder["id"]
 
 def upload_file(service, local_path: Path, parent_id: str):
-    # Resumable upload with smaller chunks → better progress frequency
     media = MediaFileUpload(str(local_path), chunksize=8 * 1024 * 1024, resumable=True)
     body = {"name": local_path.name, "parents": [parent_id]}
     request = service.files().create(body=body, media_body=media, fields="id,name,size")
@@ -284,8 +281,6 @@ def upload_file(service, local_path: Path, parent_id: str):
                     speed=human_rate(avg_bps),
                     eta=human_eta(eta))
     return response
-
-
 # ---------------- Ledger helpers ---------------- #
 
 def load_ledger(account_local: str) -> List[Dict]:
@@ -371,7 +366,6 @@ def _download_by_id(service, file_id: str, dest_path: Path):
     mime = meta.get("mimeType", "")
     size = int(meta.get("size")) if (meta.get("size") or "").isdigit() else None
 
-    # Export for Google-native; direct for binary
     if mime.startswith("application/vnd.google-apps."):
         export_mime, ext = _GOOGLE_EXPORTS.get(mime, ("application/pdf", ".pdf"))
         if not dest_path.name.lower().endswith(ext):
@@ -418,8 +412,6 @@ def _download_by_id(service, file_id: str, dest_path: Path):
             )
 
     return {"id": file_id, "name": name, "path": str(dest_path)}
-
-
 # ---------------- Commands ---------------- #
 
 def show_current_account():
@@ -684,7 +676,6 @@ def download_file_for_account():
         dest_path = dest_dir / name
         try:
             result = _download_by_id(service, file_id, dest_path)
-            # Mark local mirror since we downloaded it
             _set_local_mirror(rec, account, Path(result["path"]))
             successes.append(result)
         except Exception as e:
@@ -729,7 +720,6 @@ def sync_local_backup_to_cloud():
         if mode == "m" and f.name in ledger_names:
             continue
         response = upload_file(service, f, backup_id)
-        # Mark as mirrored (source is the local mirror dir already)
         record = {
             "name": response.get("name"),
             "id": response.get("id"),
@@ -743,6 +733,56 @@ def sync_local_backup_to_cloud():
         uploaded += 1
     save_ledger(account, ledger)
     console.print(f"[green]Sync complete.[/] Files uploaded: {uploaded}")
+
+def sync_cloud_to_local():
+    reg = load_registry()
+    account = reg["current_account"]
+    service = build_service(account)
+    backup_id = get_backup_folder(service)
+
+    # Get list of files from Drive:/backup
+    resp = service.files().list(
+        q=f"'{backup_id}' in parents and trashed=false",
+        fields="files(id,name,size,mimeType,modifiedTime)"
+    ).execute()
+    files = resp.get("files", [])
+
+    if not files:
+        console.print("[yellow]No files found in Drive backup folder[/]")
+        return
+
+    dest_dir = _account_local_dir(account)
+    ledger = load_ledger(account)
+    ledger_names = {r["name"] for r in ledger}
+    downloaded = 0
+
+    for f in files:
+        name = f.get("name")
+        fid = f.get("id")
+        dest_path = dest_dir / name
+        try:
+            result = _download_by_id(service, fid, dest_path)
+            if name not in ledger_names:
+                record = {
+                    "name": result["name"],
+                    "id": result["id"],
+                    "size": f.get("size"),
+                    "uploaded_from": "Drive",
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "local_mirrored": True,
+                    "local_path": str(dest_path),
+                }
+                ledger.append(record)
+            else:
+                for rec in ledger:
+                    if rec["name"] == name:
+                        _set_local_mirror(rec, account, dest_path)
+            downloaded += 1
+        except Exception as e:
+            console.print(f"[red]Failed to download {name}: {e}")
+
+    save_ledger(account, ledger)
+    console.print(f"[green]Sync complete.[/] Files downloaded: {downloaded}")
 
 def create_next_account():
     reg = load_registry()
@@ -786,7 +826,6 @@ def reset_cloudchain():
         console.print("[yellow]Reset cancelled.[/]")
         return
 
-    # Remove registry and all account subdirs with CloudChain state
     rp = reg_path()
     if rp.exists():
         rp.unlink(missing_ok=True)
@@ -794,7 +833,6 @@ def reset_cloudchain():
         if sub.is_dir() and ((sub / "token.json").exists() or (sub / "uploads.yaml").exists()):
             shutil.rmtree(sub, ignore_errors=True)
 
-    # Clear keyring entries we manage
     for key in ["base_backup", "chain_base", "client_id", "client_secret"]:
         try:
             keyring.delete_password(SERVICE_NAME, key)
@@ -804,6 +842,29 @@ def reset_cloudchain():
     console.print("[green]CloudChain reset complete. Restart the app to reinitialize.[/]")
     raise SystemExit(0)
 
+def switch_account():
+    reg = load_registry()
+    accts = reg.get("accounts", [])
+    if not accts:
+        console.print("[yellow]No accounts available.[/]")
+        return
+    console.print("Accounts:")
+    for idx, acc in enumerate(accts, start=1):
+        console.print(f"  {idx}) {acc}@{reg.get('domain','gmail.com')}")
+    choice = Prompt.ask("Enter account number to switch")
+    try:
+        idx = int(choice) - 1
+        reg["current_account"] = accts[idx]
+        save_registry(reg)
+        console.print(f"[green]Switched to {reg['current_account']}[/]")
+    except Exception:
+        console.print("[red]Invalid choice[/]")
+
+# (Upload, list_cloud_contents with fixed _has_local_mirror, show_local_backup,
+# delete_local_backup, delete_file_for_account, download_file_for_account,
+# check_quota, sync_local_backup_to_cloud, sync_cloud_to_local, create_next_account,
+# reset_cloudchain — UNCHANGED except ledger check fix already applied.)
+
 
 # ---------------- Menu ---------------- #
 
@@ -812,27 +873,39 @@ def interactive():
 ▌ ▐ ▛▌▌▌▛▌▌ ▛▌▀▌▌▛▌  ▜▘▛▌▛▘  ▛▌▛▌▛▌▛▌▐ █▌  ▛▌▛▘▌▌▌█▌  
 ▙▖▐▖▙▌▙▌▙▌▙▖▌▌█▌▌▌▌  ▐ ▙▌▌   ▙▌▙▌▙▌▙▌▐▖▙▖  ▙▌▌ ▌▚▘▙▖▗ 
                              ▄▌    ▄▌                 """
-    disclaimer = "[bold red]DISCLAIMER:[/] DO NOT VIOLATE Google’s Terms."
+
+    # Disclaimer splash
+    console.print(Panel("[bold red]DISCLAIMER:[/] DO NOT VIOLATE Google’s Terms.", expand=False))
+    time.sleep(1)
 
     while True:
         console.clear()
         console.print(f"[bold cyan]{banner}[/]")
         console.print("[bold white]CloudChain for Google Drive[/]")
-        console.print(Panel(disclaimer, expand=False))
+
+        reg = load_registry()
+        if reg.get("current_account"):
+            acc = reg["current_account"]
+            console.print(Panel(
+                f"Active Google Account: [cyan]{acc}@{reg.get('domain','gmail.com')}[/]\n"
+                f"Local backup folder: [green]{account_dir_local(acc)}[/]",
+                title="Active Account",
+                expand=False
+            ))
 
         menu = Table(title="Main Menu", show_header=False, box=None, expand=False, show_lines=True)
-        menu.add_column("Option", style="cyan", justify="right", no_wrap=True)
+        menu.add_column("Option", style="bold green", justify="right", no_wrap=True)
         menu.add_column("Action", style="white")
 
-        menu.add_row("1", "Show current account")
-        menu.add_row("2", "Switch account")
-        menu.add_row("3", "Create next account (when full)")
+        menu.add_row("1", "Switch Google Account")
+        menu.add_row("2", "Create Google Account (when full)")
         menu.add_section()
-        menu.add_row("4", "Upload file to Drive")
-        menu.add_row("5", "Download file(s) from Drive")
-        menu.add_row("6", "List cloud contents (ledger)")
-        menu.add_row("7", "Delete a file from Drive")
-        menu.add_row("8", "Sync local backup → Drive")
+        menu.add_row("3", "Upload to Drive")
+        menu.add_row("4", "Download from Drive")
+        menu.add_row("5", "Show Files on Drive (ledger)")
+        menu.add_row("6", "Delete a file from Drive")
+        menu.add_row("7", "Sync local backup → Drive")
+        menu.add_row("8", "Sync Drive → local backup")
         menu.add_section()
         menu.add_row("9", "Show local backup")
         menu.add_row("10", "Delete from local backup")
@@ -843,14 +916,14 @@ def interactive():
         console.print(menu)
 
         choice = Prompt.ask("Select option", default="12")
-        if choice == "1": show_current_account()
-        elif choice == "2": switch_account()
-        elif choice == "3": create_next_account()
-        elif choice == "4": upload_file_for_account()
-        elif choice == "5": download_file_for_account()
-        elif choice == "6": list_cloud_contents()
-        elif choice == "7": delete_file_for_account()
-        elif choice == "8": sync_local_backup_to_cloud()
+        if choice == "1": switch_account()
+        elif choice == "2": create_next_account()
+        elif choice == "3": upload_file_for_account()
+        elif choice == "4": download_file_for_account()
+        elif choice == "5": list_cloud_contents()
+        elif choice == "6": delete_file_for_account()
+        elif choice == "7": sync_local_backup_to_cloud()
+        elif choice == "8": sync_cloud_to_local()
         elif choice == "9": show_local_backup()
         elif choice == "10": delete_local_backup()
         elif choice == "11": reset_cloudchain()
