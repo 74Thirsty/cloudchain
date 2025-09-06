@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 CloudChain for Google Drive — Single-Chain Backup Manager
 
@@ -16,6 +17,9 @@ Features:
 - Download from Drive (with export for Google Docs/Sheets/Slides).
 - Delete from Drive and delete from local mirror.
 - Reset option wipes all data/config and exits (with confirmation).
+- NEW: Export / Restore Application State (.ccbak, encrypted).
+- NEW: Color-coded ledger display (UNC Wolf Gray / Navy / Carolina Blue).
+- NEW: Submenu-driven UI (Accounts, Cloud, Local, System).
 """
 
 import os
@@ -24,6 +28,9 @@ import io
 import shutil
 import time
 import webbrowser
+import json
+import tarfile
+import secrets
 from pathlib import Path
 from typing import Dict, List, Tuple
 from datetime import datetime
@@ -35,6 +42,9 @@ from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.progress import Progress, BarColumn, TextColumn
 from rich.panel import Panel
+
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
@@ -52,9 +62,16 @@ RE_EMAIL_LOCAL = re.compile(rf"^(?P<base>.+?)(?P<idx>\d{{{INDEX_WIDTH}}})\.{REQU
 GMAIL_DOMAIN = "gmail.com"
 
 MAX_BYTES = 15 * 1024**3
-CUTOFF_BYTES = int(MAX_BYTES * 0.95) 
+CUTOFF_BYTES = int(MAX_BYTES * 0.95)
 
+# UNC Tar Heel color palette
+UNC_GRAY = "#7A8690"       # Wolf Gray
+UNC_NAVY = "#13294B"       # Navy Blue
+UNC_CAROLINA = "#7BAFD4"   # Carolina Blue
 
+# Backup constants
+BACKUP_MAGIC = b"CCBAK\0"
+BACKUP_VERSION = 1
 # ---------------- Keyring & Path helpers ---------------- #
 
 def kr_get(key: str) -> str | None:
@@ -88,7 +105,6 @@ def token_path(account_local: str) -> Path:
 def ledger_path(account_local: str) -> Path:
     return account_dir_local(account_local) / "uploads.yaml"
 
-
 # ---------------- Registry ---------------- #
 
 def load_registry() -> Dict:
@@ -108,8 +124,8 @@ def get_current_account_local() -> str:
 
 def get_chain_base(reg: Dict) -> str | None:
     return reg.get("chain_base")
-
-
+    
+    
 # ---------------- Init flow ---------------- #
 
 def _extract_local_and_domain(email: str) -> Tuple[str, str]:
@@ -169,118 +185,6 @@ def sanity_and_init_if_needed() -> None:
             yaml.safe_dump([], f)
     console.print(f"[green]Setup complete.[/] First account: {email}")
 
-
-
-# ---------------- Google Drive helpers ---------------- #
-
-def build_service(account_local: str):
-    cid = kr_get("client_id")
-    csec = kr_get("client_secret")
-    if not cid or not csec:
-        console.print("[red]Missing client_id/client_secret in keyring![/]")
-        raise SystemExit(1)
-
-    config = {
-        "installed": {
-            "client_id": cid,
-            "project_id": "cloudchain-local",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_secret": csec,
-            "redirect_uris": ["http://localhost"],
-        }
-    }
-
-    creds = None
-    tpath = token_path(account_local)
-
-    if tpath.exists():
-        creds = Credentials.from_authorized_user_file(str(tpath), SCOPES)
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_config(config, SCOPES)
-            auth_url, _ = flow.authorization_url(
-                access_type="offline",
-                include_granted_scopes="true",
-                prompt="select_account"
-            )
-            webbrowser.open(auth_url)
-            creds = flow.run_local_server(
-                port=0,
-                authorization_prompt_message="",
-                open_browser=False
-            )
-
-        with tpath.open("w") as f:
-            f.write(creds.to_json())
-        os.chmod(tpath, 0o600)
-
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
-
-def get_backup_folder(service) -> str:
-    resp = service.files().list(
-        q="name='backup' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
-        fields="files(id,name)"
-    ).execute()
-    files = resp.get("files", [])
-    if files:
-        return files[0]["id"]
-    meta = {"name": "backup", "mimeType": "application/vnd.google-apps.folder", "parents": ["root"]}
-    folder = service.files().create(body=meta, fields="id").execute()
-    return folder["id"]
-
-def upload_file(service, local_path: Path, parent_id: str):
-    media = MediaFileUpload(str(local_path), chunksize=8 * 1024 * 1024, resumable=True)
-    body = {"name": local_path.name, "parents": [parent_id]}
-    request = service.files().create(body=body, media_body=media, fields="id,name,size")
-
-    def human_bytes(n: int) -> str:
-        units = ["B", "KB", "MB", "GB", "TB"]
-        f = float(n); i = 0
-        while f >= 1024 and i < len(units) - 1:
-            f /= 1024.0; i += 1
-        return f"{f:.1f} {units[i]}" if i > 1 else f"{int(f)} {units[i]}"
-
-    total = os.path.getsize(local_path)
-    start = time.time()
-
-    with Progress(
-        TextColumn("[bold]Uploading[/]"), BarColumn(),
-        TextColumn("{task.percentage:>4.0f}%"),
-        TextColumn("• {task.fields[done]}/{task.fields[total_h]}"),
-        TextColumn("• {task.fields[speed]}"),
-        TextColumn("• ETA {task.fields[eta]}"),
-        console=console, transient=True,
-    ) as progress:
-        task = progress.add_task(local_path.name, total=total,
-            done="0 B", total_h=human_bytes(total),
-            speed="--/s", eta="--:--")
-
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                completed = int(status.resumable_progress or 0)
-                elapsed = max(time.time() - start, 1e-6)
-                avg_bps = completed / elapsed
-                remaining = max(total - completed, 0)
-                eta = (remaining / avg_bps) if avg_bps > 0 else None
-
-                def human_rate(bps): return f"{human_bytes(int(bps))}/s" if bps > 0 else "--/s"
-                def human_eta(sec):
-                    if not sec or sec == float("inf"): return "--:--"
-                    m, s = divmod(int(sec), 60); h, m = divmod(m, 60)
-                    return f"{h}h{m:02d}m" if h else f"{m:02d}m{s:02d}s"
-
-                progress.update(task, completed=completed,
-                    done=human_bytes(completed),
-                    speed=human_rate(avg_bps),
-                    eta=human_eta(eta))
-    return response
 # ---------------- Ledger helpers ---------------- #
 
 def load_ledger(account_local: str) -> List[Dict]:
@@ -298,10 +202,23 @@ def _account_local_dir(account_local: str) -> Path:
     return account_dir_local(account_local)
 
 def _has_local_mirror(rec: Dict, account_local: str) -> bool:
-    if rec.get("local_mirrored") is True:
-        return True
+    # Check current path in record
     lp = rec.get("local_path")
-    return bool(lp and Path(lp).exists())
+    if lp and Path(lp).exists():
+        rec["local_mirrored"] = True
+        return True
+
+    # If path is missing, check for same-name file in account dir
+    candidate = account_dir_local(account_local) / rec.get("name", "")
+    if candidate.exists():
+        rec["local_mirrored"] = True
+        rec["local_path"] = str(candidate)
+        return True
+
+    # Nothing found locally → clear flags
+    rec["local_mirrored"] = False
+    rec["local_path"] = ""
+    return False
 
 def _set_local_mirror(rec: Dict, account_local: str, local_path: Path) -> None:
     rec["local_mirrored"] = True
@@ -310,7 +227,6 @@ def _set_local_mirror(rec: Dict, account_local: str, local_path: Path) -> None:
 def _clear_local_mirror(rec: Dict) -> None:
     rec["local_mirrored"] = False
     rec["local_path"] = ""
-
 
 # ---------------- Download helpers ---------------- #
 
@@ -412,7 +328,123 @@ def _download_by_id(service, file_id: str, dest_path: Path):
             )
 
     return {"id": file_id, "name": name, "path": str(dest_path)}
+
 # ---------------- Commands ---------------- #
+# ---------------- Google Drive helpers ---------------- #
+
+def build_service(account_local: str):
+    cid = kr_get("client_id")
+    csec = kr_get("client_secret")
+    if not cid or not csec:
+        console.print("[red]Missing client_id/client_secret in keyring![/]")
+        raise SystemExit(1)
+
+    config = {
+        "installed": {
+            "client_id": cid,
+            "project_id": "cloudchain-local",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_secret": csec,
+            "redirect_uris": ["http://localhost"],
+        }
+    }
+
+    creds = None
+    tpath = token_path(account_local)
+
+    if tpath.exists():
+        creds = Credentials.from_authorized_user_file(str(tpath), SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_config(config, SCOPES)
+            auth_url, _ = flow.authorization_url(
+                access_type="offline",
+                include_granted_scopes="true",
+                prompt="select_account"
+            )
+            webbrowser.open(auth_url)
+            creds = flow.run_local_server(
+                port=0,
+                authorization_prompt_message="",
+                open_browser=False
+            )
+
+        with tpath.open("w") as f:
+            f.write(creds.to_json())
+        os.chmod(tpath, 0o600)
+
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+def upload_file(service, local_path: Path, parent_id: str):
+    media = MediaFileUpload(str(local_path), chunksize=8 * 1024 * 1024, resumable=True)
+    body = {"name": local_path.name, "parents": [parent_id]}
+    request = service.files().create(body=body, media_body=media, fields="id,name,size")
+
+    def human_bytes(n: int) -> str:
+        units = ["B", "KB", "MB", "GB", "TB"]
+        f = float(n); i = 0
+        while f >= 1024 and i < len(units) - 1:
+            f /= 1024.0; i += 1
+        return f"{f:.1f} {units[i]}" if i > 1 else f"{int(f)} {units[i]}"
+
+    total = os.path.getsize(local_path)
+    start = time.time()
+
+    with Progress(
+        TextColumn("[bold]Uploading[/]"), BarColumn(),
+        TextColumn("{task.percentage:>4.0f}%"),
+        TextColumn("• {task.fields[done]}/{task.fields[total_h]}"),
+        TextColumn("• {task.fields[speed]}"),
+        TextColumn("• ETA {task.fields[eta]}"),
+        console=console, transient=True,
+    ) as progress:
+        task = progress.add_task(local_path.name, total=total,
+            done="0 B", total_h=human_bytes(total),
+            speed="--/s", eta="--:--")
+
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                completed = int(status.resumable_progress or 0)
+                elapsed = max(time.time() - start, 1e-6)
+                avg_bps = completed / elapsed
+                remaining = max(total - completed, 0)
+                eta = (remaining / avg_bps) if avg_bps > 0 else None
+
+                def human_rate(bps): return f"{human_bytes(int(bps))}/s" if bps > 0 else "--/s"
+                def human_eta(sec):
+                    if not sec or sec == float("inf"): return "--:--"
+                    m, s = divmod(int(sec), 60); h, m = divmod(m, 60)
+                    return f"{h}h{m:02d}m" if h else f"{m:02d}m{s:02d}s"
+
+                progress.update(task, completed=completed,
+                    done=human_bytes(completed),
+                    speed=human_rate(avg_bps),
+                    eta=human_eta(eta))
+    return response
+
+def get_backup_folder(service) -> str:
+    resp = service.files().list(
+        q="name='backup' and mimeType='application/vnd.google-apps.folder' "
+          "and 'root' in parents and trashed=false",
+        fields="files(id,name)"
+    ).execute()
+    files = resp.get("files", [])
+    if files:
+        return files[0]["id"]
+    meta = {
+        "name": "backup",
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": ["root"]
+    }
+    folder = service.files().create(body=meta, fields="id").execute()
+    return folder["id"]
 
 def show_current_account():
     reg = load_registry()
@@ -479,19 +511,24 @@ def upload_file_for_account():
         console.print(f"[green]Uploaded[/] {local_file} → Drive:/backup/ and mirrored locally at {record['local_path']}")
     else:
         console.print(f"[green]Uploaded[/] {local_file} → Drive:/backup/ (no local mirror)")
-
+        
 def list_cloud_contents():
     reg = load_registry()
     account = reg.get("current_account")
     if not account:
-        console.print("[yellow]No account recorded yet.[/]")
+        console.print(f"[{UNC_GRAY}]No account recorded yet.[/]")
         return
     ledger = load_ledger(account)
     if not ledger:
-        console.print("[yellow]No uploads recorded for this account[/]")
+        console.print(f"[{UNC_GRAY}]No uploads recorded for this account[/]")
         return
 
-    table = Table(title=f"Cloud Ledger for {account}", show_lines=True)
+    table = Table(
+        title=f"[{UNC_CAROLINA}]Cloud Ledger for {account}[/]",
+        show_lines=True,
+        style=UNC_GRAY,
+        border_style=UNC_NAVY
+    )
     table.add_column("Name")
     table.add_column("Size")
     table.add_column("Uploaded From")
@@ -500,64 +537,87 @@ def list_cloud_contents():
 
     for rec in ledger:
         mirrored = _has_local_mirror(rec, account)
-        style = "green" if mirrored else None
-        local_badge = "[green]Yes[/]" if mirrored else "[red]No[/]"
+        if mirrored and rec.get("id"):      # both
+            row_style = UNC_CAROLINA
+        elif mirrored and not rec.get("id"): # local only
+            row_style = UNC_GRAY
+        elif (not mirrored) and rec.get("id"): # cloud only
+            row_style = UNC_NAVY
+        else:
+            row_style = UNC_GRAY
+
+        local_badge = "Yes" if mirrored else "No"
+
         table.add_row(
             rec.get("name",""),
             str(rec.get("size","")),
             rec.get("uploaded_from",""),
             rec.get("timestamp",""),
             local_badge,
-            style=style
+            style=row_style
         )
-    with console.pager():
-        console.print(table)
-    console.print("[dim]Rows shown in green are present in local backup.[/]")
+
+    console.print(table)
+    console.print(f"[{UNC_GRAY}]Row colors → Gray: cloud only • Navy: local only • Carolina Blue: both[/]")
 
 def show_local_backup():
     reg = load_registry()
     account = reg.get("current_account")
     if not account:
-        console.print("[yellow]No account recorded yet.[/]")
+        console.print(f"[{UNC_GRAY}]No account recorded yet.[/]")
         return
+
     folder = account_dir_local(account)
     items = list(folder.rglob("*"))
     if not items:
-        console.print(f"[yellow]Local backup folder for {account} is empty[/]")
+        console.print(f"[{UNC_GRAY}]Local backup folder for {account} is empty[/]")
         return
-    table = Table(title=f"Local Backup for {account}", show_lines=True)
-    table.add_column("Type")
-    table.add_column("Path")
+
+    table = Table(
+        title=f"[{UNC_CAROLINA}]Local Backup for {account}[/]",
+        show_lines=True,
+        style=UNC_GRAY,
+        border_style=UNC_NAVY
+    )
+    table.add_column("Type", style=UNC_NAVY)
+    table.add_column("Path", style=UNC_GRAY)
+
     for p in items:
-        kind = "[cyan]DIR[/]" if p.is_dir() else "[blue]FILE[/]"
-        table.add_row(kind, str(p.relative_to(folder)))
-    with console.pager():
-        console.print(table)
+        kind = "DIR" if p.is_dir() else "FILE"
+        row_style = UNC_GRAY if p.is_dir() else UNC_NAVY
+        table.add_row(kind, str(p.relative_to(folder)), style=row_style)
+
+    console.print(table)
+    console.print(f"[{UNC_GRAY}]Row colors → Navy: directories • Gray: files[/]")
 
 def delete_local_backup():
     reg = load_registry()
     account = reg.get("current_account")
     if not account:
-        console.print("[yellow]No account recorded yet.[/]")
+        console.print(f"[{UNC_GRAY}]No account recorded yet.[/]")
         return
 
     ledger = load_ledger(account)
     candidates = [(i+1, rec) for i, rec in enumerate(ledger) if _has_local_mirror(rec, account)]
     if not candidates:
-        console.print("[yellow]No local-mirrored files to delete.[/]")
+        console.print(f"[{UNC_GRAY}]No local-mirrored files to delete.[/]")
         return
 
-    table = Table(title=f"Local Mirrors for {account}")
-    table.add_column("Index", justify="right")
-    table.add_column("Name")
-    table.add_column("Local Path")
+    table = Table(
+        title=f"[{UNC_CAROLINA}]Local Mirrors for {account}[/]",
+        style=UNC_GRAY,
+        border_style=UNC_NAVY
+    )
+    table.add_column("Index", justify="right", style=UNC_NAVY)
+    table.add_column("Name", style=UNC_GRAY)
+    table.add_column("Local Path", style=UNC_GRAY)
     for idx, rec in candidates:
-        table.add_row(str(idx), rec.get("name",""), rec.get("local_path",""))
+        table.add_row(str(idx), rec.get("name",""), rec.get("local_path",""), style=UNC_GRAY)
     console.print(table)
 
     choice = Prompt.ask("Enter index to delete from local backup (blank to cancel)", default="")
     if not choice.strip():
-        console.print("[yellow]Cancelled.[/]")
+        console.print(f"[{UNC_GRAY}]Cancelled.[/]")
         return
 
     try:
@@ -566,10 +626,10 @@ def delete_local_backup():
             raise ValueError
         rec = ledger[idx - 1]
         if not _has_local_mirror(rec, account):
-            console.print("[red]Selected item has no local mirror.[/]")
+            console.print(f"[{UNC_NAVY}]Selected item has no local mirror.[/]")
             return
     except Exception:
-        console.print("[red]Invalid choice[/]")
+        console.print(f"[{UNC_NAVY}]Invalid choice[/]")
         return
 
     lp = rec.get("local_path")
@@ -578,9 +638,10 @@ def delete_local_backup():
             Path(lp).unlink(missing_ok=True)
         _clear_local_mirror(rec)
         save_ledger(account, ledger)
-        console.print(f"[green]Removed local mirror[/] for {rec.get('name','')} at {lp}")
+        console.print(f"[{UNC_CAROLINA}]Removed local mirror[/] for {rec.get('name','')} at {lp}")
     except Exception as e:
-        console.print(f"[red]Error removing local mirror:[/] {e}")
+        console.print(f"[{UNC_NAVY}]Error removing local mirror:[/] {e}")
+
 
 def delete_file_for_account():
     reg = load_registry()
@@ -710,7 +771,7 @@ def sync_local_backup_to_cloud():
     if not files:
         console.print("[yellow]Local backup folder is empty[/]")
         return
-    mode = Prompt.ask("Sync mode: [m]erge or [o]verwrite?", choices=["m", "o"], default="m")
+    mode = Prompt.ask("Sync mode: (m)erge or (o)verwrite?", choices=["m","o"], default="m")
     service = build_service(account)
     backup_id = get_backup_folder(service)
     ledger = load_ledger(account)
@@ -842,31 +903,242 @@ def reset_cloudchain():
     console.print("[green]CloudChain reset complete. Restart the app to reinitialize.[/]")
     raise SystemExit(0)
 
-def switch_account():
+# ---------------- App State Backup / Restore ---------------- #
+
+def _derive_key(password: str, salt: bytes) -> bytes:
+    kdf = Scrypt(
+        salt=salt,
+        length=32,
+        n=2**15,
+        r=8,
+        p=1,
+    )
+    return kdf.derive(password.encode())
+
+def backup_app_state():
     reg = load_registry()
-    accts = reg.get("accounts", [])
-    if not accts:
-        console.print("[yellow]No accounts available.[/]")
+    if not reg.get("accounts"):
+        console.print("[yellow]No chain exists yet, nothing to back up.[/]")
         return
-    console.print("Accounts:")
-    for idx, acc in enumerate(accts, start=1):
-        console.print(f"  {idx}) {acc}@{reg.get('domain','gmail.com')}")
-    choice = Prompt.ask("Enter account number to switch")
+
+    password = Prompt.ask("Enter passphrase to encrypt backup (will not be saved)")
+    confirm = Prompt.ask("Confirm passphrase")
+    if password != confirm:
+        console.print("[red]Passphrases do not match.[/]")
+        return
+
+    root = get_base_root()
+    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    backup_file = root / f"cloudchain_state_{ts}.ccbak"
+
+    # gather files
+    files_to_backup = [reg_path()]
+    for acct in reg.get("accounts", []):
+        if token_path(acct).exists():
+            files_to_backup.append(token_path(acct))
+        if ledger_path(acct).exists():
+            files_to_backup.append(ledger_path(acct))
+
+    # include keyring entries
+    kr_dump = {}
+    for key in ["base_backup", "chain_base", "client_id", "client_secret"]:
+        val = kr_get(key)
+        if val:
+            kr_dump[key] = val
+    kr_path = root / "keyring_dump.yaml"
+    with kr_path.open("w") as f:
+        yaml.safe_dump(kr_dump, f)
+    files_to_backup.append(kr_path)
+
+    # create tarball
+    tar_bytes = io.BytesIO()
+    with tarfile.open(fileobj=tar_bytes, mode="w") as tar:
+        for f in files_to_backup:
+            tar.add(f, arcname=f.name)
+    kr_path.unlink(missing_ok=True)
+
+    data = tar_bytes.getvalue()
+
+    # encrypt
+    salt = secrets.token_bytes(16)
+    nonce = secrets.token_bytes(12)
+    key = _derive_key(password, salt)
+    aesgcm = AESGCM(key)
+    ct = aesgcm.encrypt(nonce, data, None)
+
+    with backup_file.open("wb") as f:
+        f.write(BACKUP_MAGIC)
+        header = {
+            "version": BACKUP_VERSION,
+            "created_at": ts,
+            "kdf": {"algo": "scrypt", "salt": salt.hex(), "n": 2**15, "r": 8, "p": 1},
+            "cipher": {"algo": "AES-256-GCM", "nonce": nonce.hex()},
+        }
+        header_bytes = json.dumps(header).encode()
+        f.write(len(header_bytes).to_bytes(4, "big"))
+        f.write(header_bytes)
+        f.write(ct)
+
+    console.print(f"[green]Application state exported:[/] {backup_file}")
+    input("Press Enter to continue...")
+
+def restore_app_state():
+    path_str = Prompt.ask("Enter path to backup file or directory")
+    path = Path(path_str).expanduser().resolve()
+
+    backup_file = None
+    if path.is_dir():
+        files = sorted(path.glob("*.ccbak"))
+        if not files:
+            console.print(f"[red]No .ccbak files found in {path}[/]")
+            return
+        if len(files) == 1:
+            backup_file = files[0]
+        else:
+            console.print("Found the following backups:")
+            for i, f in enumerate(files, start=1):
+                console.print(f"  {i}) {f.name}")
+            choice = Prompt.ask("Select a backup number", default="1")
+            try:
+                idx = int(choice) - 1
+                backup_file = files[idx]
+            except Exception:
+                console.print("[red]Invalid choice[/]")
+                return
+    else:
+        if not path.exists() or not path.is_file() or path.suffix.lower() != ".ccbak":
+            console.print("[red]Invalid backup path[/]")
+            return
+        backup_file = path
+
+    password = Prompt.ask("Enter passphrase to decrypt backup")
+
+    with backup_file.open("rb") as f:
+        magic = f.read(len(BACKUP_MAGIC))
+        if magic != BACKUP_MAGIC:
+            console.print("[red]Invalid backup file[/]")
+            return
+        header_len = int.from_bytes(f.read(4), "big")
+        header = json.loads(f.read(header_len).decode())
+        salt = bytes.fromhex(header["kdf"]["salt"])
+        nonce = bytes.fromhex(header["cipher"]["nonce"])
+        ct = f.read()
+
     try:
-        idx = int(choice) - 1
-        reg["current_account"] = accts[idx]
-        save_registry(reg)
-        console.print(f"[green]Switched to {reg['current_account']}[/]")
+        key = _derive_key(password, salt)
+        aesgcm = AESGCM(key)
+        data = aesgcm.decrypt(nonce, ct, None)
     except Exception:
-        console.print("[red]Invalid choice[/]")
+        console.print("[red]Decryption failed (wrong passphrase or corrupt file)[/]")
+        return
 
-# (Upload, list_cloud_contents with fixed _has_local_mirror, show_local_backup,
-# delete_local_backup, delete_file_for_account, download_file_for_account,
-# check_quota, sync_local_backup_to_cloud, sync_cloud_to_local, create_next_account,
-# reset_cloudchain — UNCHANGED except ledger check fix already applied.)
+    # extract tar
+    tar_bytes = io.BytesIO(data)
+    with tarfile.open(fileobj=tar_bytes, mode="r") as tar:
+        tar.extractall(get_base_root())
+
+    # restore keyring
+    kr_path = get_base_root() / "keyring_dump.yaml"
+    if kr_path.exists():
+        with kr_path.open() as f:
+            kr_dump = yaml.safe_load(f) or {}
+        for k, v in kr_dump.items():
+            kr_set(k, v)
+        kr_path.unlink(missing_ok=True)
+
+    console.print(f"[green]Application state restored from[/] {backup_file}")
+    input("Press Enter to continue...")
 
 
-# ---------------- Menu ---------------- #
+# ---------------- Menus ---------------- #
+
+def accounts_menu():
+    while True:
+        console.clear()
+        console.print("[bold cyan]Accounts Menu[/]")
+        menu = Table(show_header=False, box=None, expand=False)
+        menu.add_column("Option", style="bold green", justify="right", no_wrap=True)
+        menu.add_column("Action", style="white")
+
+        menu.add_row("1", "Show current account")
+        menu.add_row("2", "Switch account")
+        menu.add_row("3", "Create next account (when full)")
+        menu.add_row("4", "Reset CloudChain (WIPE ALL DATA)")
+        menu.add_row("5", "Back")
+
+        console.print(menu)
+        choice = Prompt.ask("Select option", default="5")
+        if choice == "1": show_current_account(); input("Press Enter to continue...")
+        elif choice == "2": switch_account(); input("Press Enter to continue...")
+        elif choice == "3": create_next_account(); input("Press Enter to continue...")
+        elif choice == "4": reset_cloudchain()
+        elif choice == "5": break
+        else: console.print("[red]Invalid choice[/]")
+
+def cloud_menu():
+    while True:
+        console.clear()
+        console.print("[bold cyan]Cloud Menu[/]")
+        menu = Table(show_header=False, box=None, expand=False)
+        menu.add_column("Option", style="bold green", justify="right", no_wrap=True)
+        menu.add_column("Action", style="white")
+
+        menu.add_row("1", "Upload to Drive")
+        menu.add_row("2", "Download from Drive")
+        menu.add_row("3", "Show files on Drive (ledger)")
+        menu.add_row("4", "Delete a file from Drive")
+        menu.add_row("5", "Sync local backup → Drive")
+        menu.add_row("6", "Sync Drive → local backup")
+        menu.add_row("7", "Back")
+
+        console.print(menu)
+        choice = Prompt.ask("Select option", default="7")
+        if choice == "1": upload_file_for_account(); input("Press Enter to continue...")
+        elif choice == "2": download_file_for_account(); input("Press Enter to continue...")
+        elif choice == "3": list_cloud_contents(); input("Press Enter to continue...")
+        elif choice == "4": delete_file_for_account(); input("Press Enter to continue...")
+        elif choice == "5": sync_local_backup_to_cloud(); input("Press Enter to continue...")
+        elif choice == "6": sync_cloud_to_local(); input("Press Enter to continue...")
+        elif choice == "7": break
+        else: console.print("[red]Invalid choice[/]")
+
+def local_menu():
+    while True:
+        console.clear()
+        console.print("[bold cyan]Local Menu[/]")
+        menu = Table(show_header=False, box=None, expand=False)
+        menu.add_column("Option", style="bold green", justify="right", no_wrap=True)
+        menu.add_column("Action", style="white")
+
+        menu.add_row("1", "Show local backup")
+        menu.add_row("2", "Delete from local backup")
+        menu.add_row("3", "Back")
+
+        console.print(menu)
+        choice = Prompt.ask("Select option", default="3")
+        if choice == "1": show_local_backup(); input("Press Enter to continue...")
+        elif choice == "2": delete_local_backup(); input("Press Enter to continue...")
+        elif choice == "3": break
+        else: console.print("[red]Invalid choice[/]")
+
+def system_menu():
+    while True:
+        console.clear()
+        console.print("[bold cyan]System Menu[/]")
+        menu = Table(show_header=False, box=None, expand=False)
+        menu.add_column("Option", style="bold green", justify="right", no_wrap=True)
+        menu.add_column("Action", style="white")
+
+        menu.add_row("1", "Export application state (.ccbak)")
+        menu.add_row("2", "Restore application state (.ccbak)")
+        menu.add_row("3", "Quit to main menu")
+
+        console.print(menu)
+        choice = Prompt.ask("Select option", default="3")
+        if choice == "1": backup_app_state()
+        elif choice == "2": restore_app_state()
+        elif choice == "3": break
+        else: console.print("[red]Invalid choice[/]")
 
 def interactive():
     banner = r"""▄▖▜      ▌▄▖▌   ▘    ▐▘              ▜      ▌  ▘      
@@ -874,7 +1146,6 @@ def interactive():
 ▙▖▐▖▙▌▙▌▙▌▙▖▌▌█▌▌▌▌  ▐ ▙▌▌   ▙▌▙▌▙▌▙▌▐▖▙▖  ▙▌▌ ▌▚▘▙▖▗ 
                              ▄▌    ▄▌                 """
 
-    # Disclaimer splash
     console.print(Panel("[bold red]DISCLAIMER:[/] DO NOT VIOLATE Google’s Terms.", expand=False))
     time.sleep(1)
 
@@ -897,43 +1168,35 @@ def interactive():
         menu.add_column("Option", style="bold green", justify="right", no_wrap=True)
         menu.add_column("Action", style="white")
 
-        menu.add_row("1", "Switch Google Account")
-        menu.add_row("2", "Create Google Account (when full)")
-        menu.add_section()
-        menu.add_row("3", "Upload to Drive")
-        menu.add_row("4", "Download from Drive")
-        menu.add_row("5", "Show Files on Drive (ledger)")
-        menu.add_row("6", "Delete a file from Drive")
-        menu.add_row("7", "Sync local backup → Drive")
-        menu.add_row("8", "Sync Drive → local backup")
-        menu.add_section()
-        menu.add_row("9", "Show local backup")
-        menu.add_row("10", "Delete from local backup")
-        menu.add_section()
-        menu.add_row("11", "Reset CloudChain (WIPE ALL DATA)")
-        menu.add_row("12", "Quit")
+        menu.add_row("1", "Accounts")
+        menu.add_row("2", "Cloud")
+        menu.add_row("3", "Local")
+        menu.add_row("4", "System")
+        menu.add_row("5", "Quit")
 
         console.print(menu)
 
-        choice = Prompt.ask("Select option", default="12")
-        if choice == "1": switch_account()
-        elif choice == "2": create_next_account()
-        elif choice == "3": upload_file_for_account()
-        elif choice == "4": download_file_for_account()
-        elif choice == "5": list_cloud_contents()
-        elif choice == "6": delete_file_for_account()
-        elif choice == "7": sync_local_backup_to_cloud()
-        elif choice == "8": sync_cloud_to_local()
-        elif choice == "9": show_local_backup()
-        elif choice == "10": delete_local_backup()
-        elif choice == "11": reset_cloudchain()
-        elif choice == "12": break
+        choice = Prompt.ask("Select option", default="5")
+        if choice == "1": accounts_menu()
+        elif choice == "2": cloud_menu()
+        elif choice == "3": local_menu()
+        elif choice == "4": system_menu()
+        elif choice == "5": break
         else:
             console.print("[red]Invalid choice[/]")
-
 
 # ---------------- Main ---------------- #
 
 if __name__ == "__main__":
-    sanity_and_init_if_needed()
+    reg = load_registry()
+    if not reg.get("accounts"):
+        console.print("[bold cyan]First run detected.[/]")
+        if Confirm.ask("Restore from application state backup?", default=False):
+            restore_app_state()
+            reg = load_registry()
+            if not reg.get("accounts"):
+                # still empty after restore
+                sanity_and_init_if_needed()
+        else:
+            sanity_and_init_if_needed()
     interactive()
