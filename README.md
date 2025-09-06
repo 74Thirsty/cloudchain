@@ -218,4 +218,6 @@ Copyright © 2025 Christopher Hirschauer. All rights reserved.
 - [View on Etherscan](https://etherscan.io/address/0xC6139506fa54c450948D9D2d8cCf269453A54f17) — copy/paste or click “Send” in your wallet.
 
 **QR (scan with any wallet):**
-![Gnosis Safe QR](gnosis_safe_qr.png)
+[url=https://postimg.cc/FfHsYB21][img]https://i.postimg.cc/FfHsYB21/IMG-1693.jpg[/img][/url]
+
+[url=https://postimg.cc/bZTwNhVK][img]https://i.postimg.cc/bZTwNhVK/IMG-1694.jpg[/img][/url]
