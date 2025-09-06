@@ -193,3 +193,8 @@ Yes — CloudChain works on Windows as well as Linux/macOS. A few notes:
   cloudchain init
   cloudchain backup C:\Users\YourName\Documents
   ```
+
+## License
+
+This project is licensed under the [CloudChain License](./LICENSE).  
+Copyright © 2025 Christopher Hirschauer. All rights reserved.
