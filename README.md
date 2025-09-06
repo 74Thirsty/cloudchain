@@ -1,24 +1,25 @@
 # CloudChain
 
-> Single-Chain Google Drive Backup Manager A deterministic, account-chain approach to managing unlimited Google Drive backups. DO NOT USE IN AN ATTEMPT TO ABUSE TOC's.
+> **Single-Chain Google Drive Backup Manager**
+> A deterministic, account-chain approach to managing unlimited Google Drive backups.
+> **⚠️ DO NOT USE in any attempt to bypass Google’s Terms of Service.**
 
 ---
 
 ## 🚀 Overview
 
-CloudChain is a command-line backup manager designed to store files into a linked chain of Google accounts.
-Instead of juggling random drives, CloudChain enforces a strict naming convention and quota-based rotation so your backups are always deterministic and infinitely expandable.
-	
- 	•	Uses sequential Gmail accounts (<base><NNN>.cloudchain@gmail.com) to extend storage when quotas are hit.
-	•	Self-contained state: All metadata, configs, and tokens are managed inside a single local root folder.
-	•	Deterministic rules: Naming and rotation are enforced by code, so you’ll never wonder which account is “next.”
+CloudChain is a command-line backup manager that chains together multiple Google Drive accounts into one seamless backup system. Instead of random juggling, CloudChain enforces a **strict naming convention** and **quota-based rotation** so your backups are deterministic, auditable, and infinitely expandable.
+
+* Uses sequential Gmail accounts (`<base><NNN>.cloudchain@gmail.com`) to extend storage.
+* Self-contained: all metadata, configs, and tokens live inside a single **local root**.
+* Deterministic rules: account naming and quota rollover are enforced by code.
 
 ---
 
 ## 📂 Local Directory Structure
 
-On first run, you’ll be asked for your local backup root (LOCAL_ROOT).
-CloudChain will create a state directory:
+When you first run CloudChain, it prompts for your local backup root (`LOCAL_ROOT`).
+It then creates:
 
 ```
 <LOCAL_ROOT>/cloud_backup/
@@ -31,87 +32,124 @@ CloudChain will create a state directory:
 └── ...
 ```
 
-All state lives here. Nothing is hidden elsewhere.
+Everything lives here. Nothing is scattered elsewhere.
 
-⸻
+---
 
 ## 🔗 Account Naming
 
-CloudChain enforces a strict naming scheme:
+CloudChain locks you into a single, predictable naming scheme:
+
 ```
 <basename>001.cloudchain@gmail.com
-
-
-	•	The very first account must end in 001.cloudchain.
-	•	Each new account increments numerically (002, 003, …).
-	•	Base string (mybackup, familydrive, etc.) is locked at first creation.
 ```
 
-If quota reaches ≥95%, CloudChain warns you and requires the next sequential account.
+* The **first account must end in `001.cloudchain`**.
+* Each new account increments numerically (`002`, `003`, …).
+* The base string (e.g., `mybackup`, `familydrive`) is locked at initialization.
+
+If quota hits **≥95% OR ≥14.25 GB**, CloudChain warns you and requires the **next sequential account**.
 
 ---
 
 ## ☁️ Remote Storage
 
-All files are uploaded to:
+Every account in the chain mirrors the same path:
+
 ```
 Drive:/backup/
 ```
 
-This is fixed and cannot be changed. Every account in the chain mirrors the same folder structure.
+This location is fixed and cannot be changed.
 
 ---
 
 ## 🔧 Usage
 
+**1. Initialize**
 
-1.	Initialize
- 
-```
+```bash
 cloudchain init
 ```
 
-	•	Prompts for local backup root.
-	•	Enforces base account naming (001.cloudchain).
+* Prompts for local backup root.
+* Enforces `<base>001.cloudchain` account.
 
+**2. Add a new account**
 
-2.	Add a new account
-```
+```bash
 cloudchain add
 ```
 
-	•	Checks last account’s quota.
-	•	Requires next sequential Gmail (<base>002.cloudchain@gmail.com).
+* Checks quota of last account.
+* Requires exact next Gmail (e.g., `<base>002.cloudchain@gmail.com`).
 
+**3. Backup files**
 
-
- 3.	Backup files
-```
+```bash
 cloudchain backup /path/to/files
 ```
 
+**4. Reset all state**
 
- 4.	Reset all state
-```
+```bash
 cloudchain reset
 ```
-	•	Wipes local configs and exits.
-	•	Does not touch remote accounts.
+
+* Wipes local configs/state and exits.
+* Does **not** touch remote Drive data.
 
 ---
 
 ## ⚠️ Warnings
-	•	Do not deviate from naming scheme. The system will reject mismatches.
-	•	Manual Gmail creation required. You must manually create each <base><NNN>.cloudchain@gmail.com before adding it.
-	•	Drive quota is finite. CloudChain only detects when it’s time to roll over; it cannot expand a single account.
- 
- ---
+
+* Do not deviate from the naming scheme. Mismatches are rejected.
+* You must manually create each Gmail account before linking it.
+* Drive quota is finite: CloudChain only detects rollover, it cannot expand a single account.
+
+---
 
 ## 🛠️ Philosophy
 
-CloudChain takes the chaos out of cloud backup by enforcing discipline:
-	•	No ad-hoc accounts
-	•	No mystery folders
-	•	No hidden state
+CloudChain eliminates cloud chaos by enforcing discipline:
 
-Just a clean, deterministic chain of accounts you can audit at a glance.
+* No ad-hoc accounts
+* No mystery folders
+* No hidden state
+
+Just a clean, deterministic chain of accounts you can **audit at a glance**.
+
+---
+
+## 📖 Quick Example Session
+
+Here’s what using CloudChain looks like in practice:
+
+```bash
+# Step 1: Initialize
+cloudchain init
+> Enter LOCAL_ROOT: /home/you/Backups
+> Confirm first account: mybackup001.cloudchain@gmail.com
+
+# Step 2: Backup files
+cloudchain backup ~/Documents/Taxes
+> Uploading… 1.2 GB complete
+> Account quota: 12.8 GB / 15 GB
+
+# Step 3: Quota warning (≥95% OR ≥14.25 GB)
+cloudchain backup ~/Photos
+> Quota reached on mybackup001.cloudchain@gmail.com
+> Please create next account: mybackup002.cloudchain@gmail.com
+
+# Step 4: Add the new account
+cloudchain add
+> Confirm next account: mybackup002.cloudchain@gmail.com
+> Linked successfully.
+
+# Step 5: Continue backup
+cloudchain backup ~/Photos
+> Uploading to mybackup002.cloudchain@gmail.com
+> Complete.
+```
+
+At the end, you’ve got a **chain of accounts** (`mybackup001`, `mybackup002`, …) all stitched together, each continuing where the last left off.
