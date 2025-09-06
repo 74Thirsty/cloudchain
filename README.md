@@ -1,8 +1,16 @@
+![Sheen Banner](https://raw.githubusercontent.com/74Thirsty/74Thirsty/main/assets/gunfire.svg)
+
 # CloudChain
 
 > **Single-Chain Google Drive Backup Manager**
 > A deterministic, account-chain approach to managing unlimited Google Drive backups.
 > **⚠️ DO NOT USE in any attempt to bypass Google’s Terms of Service.**
+
+---
+
+## 🖥️ Platform Support
+
+✅ Linux  ✅ macOS  ✅ Windows
 
 ---
 
@@ -153,3 +161,35 @@ cloudchain backup ~/Photos
 ```
 
 At the end, you’ve got a **chain of accounts** (`mybackup001`, `mybackup002`, …) all stitched together, each continuing where the last left off.
+
+---
+
+## 💻 Windows Ready
+
+Yes — CloudChain works on Windows as well as Linux/macOS. A few notes:
+
+* **Python Support**
+  Install Python 3.9+ on Windows (from [python.org](https://www.python.org/downloads/)) and use `pip install -r requirements.txt` to set up dependencies.
+
+* **Local Storage Path**
+  On Windows, your `LOCAL_ROOT` might look like:
+
+  ```
+  C:\Users\YourName\CloudChainBackups
+  ```
+
+  CloudChain will still create its `cloud_backup/` subfolder there.
+
+* **Keyring Backend**
+  CloudChain uses the `keyring` library. On Windows, this integrates with **Windows Credential Manager**, so tokens are stored securely without extra setup.
+
+* **OAuth Browser Flow**
+  When authorizing Google Drive access, your default browser will pop open just like on Linux.
+
+* **PowerShell / Command Prompt**
+  Use commands like this:
+
+  ```powershell
+  cloudchain init
+  cloudchain backup C:\Users\YourName\Documents
+  ```
