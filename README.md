@@ -1,4 +1,4 @@
-![Sheen Banner](https://raw.githubusercontent.com/74Thirsty/74Thirsty/main/assets/chain.svg)
+![Sheen Banner](https://raw.githubusercontent.com/74Thirsty/74Thirsty/main/assets/banner.svg)
 
 # CloudChain
 
