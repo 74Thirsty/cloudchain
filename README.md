@@ -205,7 +205,7 @@ Copyright © 2025 Christopher Hirschauer. All rights reserved.
 
 ## ☕ Buy Me a Coffee (Crypto)
 
-**Safe Address:** `0xC6139506fa54c450948D9D2d8cCf269453A54f17`
+**Safe Address:** `eth:0xC6139506fa54c450948D9D2d8cCf269453A54f17`
 
 ## ☕ One-Tap on Mobile
 
