@@ -205,4 +205,4 @@ Copyright © 2025 Christopher Hirschauer. All rights reserved.
 
 If you like CloudChain and want to support development, you can send crypto directly to my Gnosis Safe:
 
-[![Donate with Ethereum](https://img.shields.io/badge/Donate-ETH-blueviolet.svg?logo=ethereum)](ethereum:0xC6139506fa54c450948D9D2d8cCf269453A54f17)
+[Send ETH to my Gnosis Safe](https://etherscan.io/address/0xC6139506fa54c450948D9D2d8cCf269453A54f17)
