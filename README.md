@@ -201,8 +201,21 @@ Copyright © 2025 Christopher Hirschauer. All rights reserved.
 
 ---
 
-## ☕ Buy Me a Coffee
+---
 
-If you like CloudChain and want to support development, you can send crypto directly to my Gnosis Safe:
+## ☕ Buy Me a Coffee (Crypto)
 
-[Send ETH to my Gnosis Safe](https://etherscan.io/address/0xC6139506fa54c450948D9D2d8cCf269453A54f17)
+**Safe Address:** `0xC6139506fa54c450948D9D2d8cCf269453A54f17`
+
+<!-- Mobile-friendly deep links (EIP-681). These open in most mobile wallets. -->
+**One-tap on mobile:**
+- [Send 0.02 ETH](ethereum:pay-0xC6139506fa54c450948D9D2d8cCf269453A54f17@1?value=20000000000000000)
+- [Send 10 USDC](ethereum:0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48@1/transfer?address=0xC6139506fa54c450948D9D2d8cCf269453A54f17&uint256=10000000)
+
+> Tip: ETH amounts are in **wei**. USDC uses **6 decimals**, so `10 USDC = 10,000,000`.
+
+**Desktop fallback:**
+- [View on Etherscan](https://etherscan.io/address/0xC6139506fa54c450948D9D2d8cCf269453A54f17) — copy/paste or click “Send” in your wallet.
+
+**QR (scan with any wallet):**
+![Gnosis Safe QR](gnosis_safe_qr.png)
