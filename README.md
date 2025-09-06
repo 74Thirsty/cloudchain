@@ -218,6 +218,10 @@ Copyright © 2025 Christopher Hirschauer. All rights reserved.
 - [View on Etherscan](https://etherscan.io/address/0xC6139506fa54c450948D9D2d8cCf269453A54f17) — copy/paste or click “Send” in your wallet.
 
 **QR (scan with any wallet):**
-[img]https://i.postimg.cc/FfHsYB21/IMG-1693.jpg[/img]
-[img]https://i.postimg.cc/bZTwNhVK/IMG-1694.jpg[/img]
-(https://i.postimg.cc/254qKpGd/IMG-1693.jpg https://i.postimg.cc/nL8j2V4c/IMG-1694.jpg)
+## Donate (QR)
+
+<!-- If you want control over size, use HTML -->
+<p>
+  <img src="https://i.postimg.cc/254qKpGd/IMG-1693.jpg" alt="Donate QR 1" width="220">
+  <img src="https://i.postimg.cc/nL8j2V4c/IMG-1694.jpg" alt="Donate QR 2" width="220">
+</p>
