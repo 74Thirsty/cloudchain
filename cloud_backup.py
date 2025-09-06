@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 CloudChain for Google Drive — Single-Chain Backup Manager
 
