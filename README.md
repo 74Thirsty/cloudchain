@@ -198,3 +198,13 @@ Yes — CloudChain works on Windows as well as Linux/macOS. A few notes:
 
 This project is licensed under the [CloudChain License](LICENSE.md).  
 Copyright © 2025 Christopher Hirschauer. All rights reserved.
+
+---
+
+## ☕ Buy Me a Coffee
+
+If you like CloudChain and want to support development, you can send crypto directly to my Gnosis Safe:
+
+**Safe Address:** `0xYourSafeAddressHere`
+
+[![Donate with Ethereum](https://img.shields.io/badge/Donate-Safe{Wallet}-blueviolet.svg?logo=ethereum)](https://gnosis-safe.io/app/eth:0xYourSafeAddressHere)
