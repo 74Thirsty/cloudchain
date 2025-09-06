@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 CloudChain for Google Drive — Single-Chain Backup Manager
 
@@ -35,6 +34,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.progress import Progress, BarColumn, TimeRemainingColumn, TextColumn
+from rich.panel import Panel
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
@@ -52,7 +52,7 @@ RE_EMAIL_LOCAL = re.compile(rf"^(?P<base>.+?)(?P<idx>\d{{{INDEX_WIDTH}}})\.{REQU
 GMAIL_DOMAIN = "gmail.com"
 
 MAX_BYTES = 15 * 1024**3
-CUTOFF_BYTES = int(MAX_BYTES * 0.95)  # 14.25 GB
+CUTOFF_BYTES = int(MAX_BYTES * 0.95) 
 
 
 # ---------------- Keyring & Path helpers ---------------- #
@@ -498,7 +498,7 @@ def list_cloud_contents():
         console.print("[yellow]No uploads recorded for this account[/]")
         return
 
-    table = Table(title=f"Cloud Ledger for {account}")
+    table = Table(title=f"Cloud Ledger for {account}", show_lines=True)
     table.add_column("Name")
     table.add_column("Size")
     table.add_column("Uploaded From")
@@ -517,7 +517,8 @@ def list_cloud_contents():
             local_badge,
             style=style
         )
-    console.print(table)
+    with console.pager():
+        console.print(table)
     console.print("[dim]Rows shown in green are present in local backup.[/]")
 
 def show_local_backup():
@@ -531,11 +532,14 @@ def show_local_backup():
     if not items:
         console.print(f"[yellow]Local backup folder for {account} is empty[/]")
         return
-    table = Table(title=f"Local Backup for {account}")
-    table.add_column("Type"); table.add_column("Path")
+    table = Table(title=f"Local Backup for {account}", show_lines=True)
+    table.add_column("Type")
+    table.add_column("Path")
     for p in items:
-        table.add_row("FILE" if p.is_file() else "DIR", str(p.relative_to(folder)))
-    console.print(table)
+        kind = "[cyan]DIR[/]" if p.is_dir() else "[blue]FILE[/]"
+        table.add_row(kind, str(p.relative_to(folder)))
+    with console.pager():
+        console.print(table)
 
 def delete_local_backup():
     reg = load_registry()
@@ -808,34 +812,36 @@ def interactive():
 ▙▖▐▖▙▌▙▌▙▌▙▖▌▌█▌▌▌▌  ▐ ▙▌▌   ▙▌▙▌▙▌▙▌▐▖▙▖  ▙▌▌ ▌▚▘▙▖▗ 
                              ▄▌    ▄▌                 """
     disclaimer = "[bold red]DISCLAIMER:[/] DO NOT VIOLATE Google’s Terms."
+
     while True:
+        console.clear()
         console.print(f"[bold cyan]{banner}[/]")
-        console.print("[bold white]        CloudChain for Google Drive[/]")
-        console.print("-" * 60)
-        console.print(disclaimer)
-        console.print("-" * 60)
+        console.print("[bold white]CloudChain for Google Drive[/]")
+        console.print(Panel(disclaimer, expand=False))
 
-        console.print("\n[bold cyan]Accounts[/]:")
-        console.print("  1) Show current account")
-        console.print("  2) Switch account")
-        console.print("  3) Create next account (when full)")
+        menu = Table(title="Main Menu", show_header=False, box=None, expand=False, show_lines=True)
+        menu.add_column("Option", style="cyan", justify="right", no_wrap=True)
+        menu.add_column("Action", style="white")
 
-        console.print("\n[bold cyan]Cloud (Google Drive)[/]:")
-        console.print("  4) Upload file to Drive")
-        console.print("  5) Download file(s) from Drive")
-        console.print("  6) List cloud contents (ledger)")
-        console.print("  7) Delete a file from Drive")
-        console.print("  8) Sync local backup → Drive")
+        menu.add_row("1", "Show current account")
+        menu.add_row("2", "Switch account")
+        menu.add_row("3", "Create next account (when full)")
+        menu.add_section()
+        menu.add_row("4", "Upload file to Drive")
+        menu.add_row("5", "Download file(s) from Drive")
+        menu.add_row("6", "List cloud contents (ledger)")
+        menu.add_row("7", "Delete a file from Drive")
+        menu.add_row("8", "Sync local backup → Drive")
+        menu.add_section()
+        menu.add_row("9", "Show local backup")
+        menu.add_row("10", "Delete from local backup")
+        menu.add_section()
+        menu.add_row("11", "Reset CloudChain (WIPE ALL DATA)")
+        menu.add_row("12", "Quit")
 
-        console.print("\n[bold cyan]Local Backup[/]:")
-        console.print("  9) Show local backup")
-        console.print(" 10) Delete from local backup")
+        console.print(menu)
 
-        console.print("\n[bold cyan]System[/]:")
-        console.print(" 11) Reset CloudChain (WIPE ALL DATA)")
-        console.print(" 12) Quit")
-
-        choice = Prompt.ask("Select", default="12")
+        choice = Prompt.ask("Select option", default="12")
         if choice == "1": show_current_account()
         elif choice == "2": switch_account()
         elif choice == "3": create_next_account()
